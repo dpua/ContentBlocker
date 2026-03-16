@@ -144,11 +144,35 @@ class ContentBlockerViewModel: ObservableObject {
         sharedDefaults?.synchronize()
         
         // Then reload all content blockers to apply changes
+        let group = DispatchGroup()
+        var reloadedCount = 0
+        var skippedCount = 0
+        
         for identifier in blockerIdentifiers {
+            group.enter()
             SFContentBlockerManager.reloadContentBlocker(withIdentifier: identifier) { error in
-                if let error = error {
-                    print("Error reloading \(identifier): \(error.localizedDescription)")
+                defer { group.leave() }
+                
+                if let error = error as NSError? {
+                    // WKErrorDomain error 6 = extension not enabled in Safari settings - this is expected
+                    if error.domain == "WKErrorDomain" && error.code == 6 {
+                        skippedCount += 1
+                        print("Extension \(identifier) not enabled in Safari settings (skipped)")
+                    } else {
+                        print("Error reloading \(identifier): \(error.localizedDescription)")
+                    }
+                } else {
+                    reloadedCount += 1
+                    print("Successfully reloaded \(identifier)")
                 }
+            }
+        }
+        
+        group.notify(queue: .main) { [weak self] in
+            if reloadedCount > 0 {
+                self?.updateStatusMessage = "Reloaded \(reloadedCount) extension(s)"
+            } else if skippedCount == self?.blockerIdentifiers.count {
+                self?.updateStatusMessage = "Enable extensions in Safari settings"
             }
         }
     }
