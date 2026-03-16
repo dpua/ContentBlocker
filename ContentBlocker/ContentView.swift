@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SafariServices
+import Combine
 
 struct ContentView: View {
     @StateObject private var viewModel = ContentBlockerViewModel()
