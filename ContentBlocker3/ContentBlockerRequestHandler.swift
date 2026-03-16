@@ -9,24 +9,29 @@ import UIKit
 import MobileCoreServices
 
 class ContentBlockerRequestHandler: NSObject, NSExtensionRequestHandling {
+    
+    private let appGroupIdentifier = "group.com.ian.ContentBlocker"
+    private let blockerIndex = 3
 
     func beginRequest(with context: NSExtensionContext) {
-        // Check if blockers are enabled
-        let isEnabled = UserDefaults.standard.bool(forKey: "blockersEnabled")
+        let sharedDefaults = UserDefaults(suiteName: appGroupIdentifier)
+        let isEnabled = sharedDefaults?.bool(forKey: "blockersEnabled") ?? false
         
         var attachment: NSItemProvider
         
         if isEnabled {
             // Try to load from shared container first (for updated rules)
-            if let sharedContainer = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.ian.ContentBlocker") {
-                let sharedPath = sharedContainer.appendingPathComponent("blockerList3.json")
+            if let sharedContainer = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
+                let sharedPath = sharedContainer.appendingPathComponent("blockerList\(blockerIndex).json")
                 if FileManager.default.fileExists(atPath: sharedPath.path) {
                     attachment = NSItemProvider(contentsOf: sharedPath)!
                 } else {
-                    attachment = NSItemProvider(contentsOf: Bundle.main.url(forResource: "blockerList", withExtension: "json"))!
+                    // Fall back to bundled rules
+                    attachment = NSItemProvider(contentsOf: Bundle.main.url(forResource: "blockerList", withExtension: "json")!)!
                 }
             } else {
-                attachment = NSItemProvider(contentsOf: Bundle.main.url(forResource: "blockerList", withExtension: "json"))!
+                // Fall back to bundled rules
+                attachment = NSItemProvider(contentsOf: Bundle.main.url(forResource: "blockerList", withExtension: "json")!)!
             }
         } else {
             // Return empty rules when disabled

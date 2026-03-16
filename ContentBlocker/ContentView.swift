@@ -91,13 +91,17 @@ struct ContentView: View {
 class ContentBlockerViewModel: ObservableObject {
     @Published var isBlockersEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(isBlockersEnabled, forKey: "blockersEnabled")
+            sharedDefaults?.set(isBlockersEnabled, forKey: "blockersEnabled")
+            sharedDefaults?.synchronize()
         }
     }
     @Published var isCheckingUpdates = false
     @Published var updateStatusMessage: String?
     @Published var showAlert = false
     @Published var alertMessage = ""
+    
+    private let appGroupIdentifier = "group.com.ian.ContentBlocker"
+    private var sharedDefaults: UserDefaults?
     
     private let blockerIdentifiers = [
         "com.ian.ContentBlocker.ContentBlocker1",
@@ -110,12 +114,13 @@ class ContentBlockerViewModel: ObservableObject {
     private let apiURL = "https://api.cat.dp.ua/ContentBlocker/blockerList.json"
     
     init() {
+        self.sharedDefaults = UserDefaults(suiteName: appGroupIdentifier)
         // Default to disabled (false)
-        self.isBlockersEnabled = UserDefaults.standard.object(forKey: "blockersEnabled") as? Bool ?? false
+        self.isBlockersEnabled = sharedDefaults?.object(forKey: "blockersEnabled") as? Bool ?? false
     }
     
     var lastUpdateDateString: String {
-        if let date = UserDefaults.standard.object(forKey: "lastUpdateDate") as? Date {
+        if let date = sharedDefaults?.object(forKey: "lastUpdateDate") as? Date {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
             formatter.timeStyle = .short
@@ -125,14 +130,20 @@ class ContentBlockerViewModel: ObservableObject {
     }
     
     func getVersion(for index: Int) -> Int {
-        return UserDefaults.standard.integer(forKey: "blockerVersion\(index)")
+        return sharedDefaults?.integer(forKey: "blockerVersion\(index)") ?? 0
     }
     
     private func setVersion(_ version: Int, for index: Int) {
-        UserDefaults.standard.set(version, forKey: "blockerVersion\(index)")
+        sharedDefaults?.set(version, forKey: "blockerVersion\(index)")
+        sharedDefaults?.synchronize()
     }
     
     func toggleAllBlockers(enabled: Bool) {
+        // Update shared defaults first
+        sharedDefaults?.set(enabled, forKey: "blockersEnabled")
+        sharedDefaults?.synchronize()
+        
+        // Then reload all content blockers to apply changes
         for identifier in blockerIdentifiers {
             SFContentBlockerManager.reloadContentBlocker(withIdentifier: identifier) { error in
                 if let error = error {
@@ -245,7 +256,8 @@ class ContentBlockerViewModel: ObservableObject {
             guard let self = self else { return }
             
             self.isCheckingUpdates = false
-            UserDefaults.standard.set(Date(), forKey: "lastUpdateDate")
+            self.sharedDefaults?.set(Date(), forKey: "lastUpdateDate")
+            self.sharedDefaults?.synchronize()
             
             if failedCount == 0 {
                 self.updateStatusMessage = "Successfully updated \(successCount) rule(s)"
@@ -259,22 +271,9 @@ class ContentBlockerViewModel: ObservableObject {
     }
     
     private func saveBlockerRules(_ data: Data, for index: Int) -> Bool {
-        // For content blockers, the rules are bundled in the extension
-        // This saves to a shared location that could be accessed if using App Groups
-        guard let sharedContainer = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.ian.ContentBlocker") else {
-            // Fallback to documents directory
-            guard let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-                return false
-            }
-            
-            let filePath = documentsPath.appendingPathComponent("blockerList\(index).json")
-            do {
-                try data.write(to: filePath)
-                return true
-            } catch {
-                print("Failed to save blocker rules: \(error)")
-                return false
-            }
+        guard let sharedContainer = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+            print("Failed to get shared container")
+            return false
         }
         
         let filePath = sharedContainer.appendingPathComponent("blockerList\(index).json")
