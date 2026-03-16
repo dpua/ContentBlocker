@@ -56,8 +56,17 @@ class ContentBlockerRequestHandler: NSObject, NSExtensionRequestHandling {
     }
     
     private func returnEmptyRules(context: NSExtensionContext) {
-        let emptyRulesJSON = "[]"
-        let attachment = NSItemProvider(item: emptyRulesJSON as NSString, typeIdentifier: UTType.json.identifier)
+        guard let bundleURL = Bundle.main.url(forResource: "emptyRules", withExtension: "json"),
+              let attachment = NSItemProvider(contentsOf: bundleURL) else {
+            // Fallback: create empty rules file in temp directory
+            let emptyRulesData = "[]".data(using: .utf8)!
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("emptyRules.json")
+            try? emptyRulesData.write(to: tempURL)
+            if let attachment = NSItemProvider(contentsOf: tempURL) {
+                completeRequest(context: context, attachment: attachment)
+            }
+            return
+        }
         completeRequest(context: context, attachment: attachment)
     }
     
